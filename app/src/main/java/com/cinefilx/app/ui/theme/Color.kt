@@ -1,0 +1,88 @@
+package com.cinefilx.app.ui.theme
+
+import androidx.compose.ui.graphics.Color
+
+// Material 3 CineFilx color palette
+// Seed color: deep cinematic red #E50914 (Netflix-inspired but unique)
+
+// Light scheme
+val PrimaryLight = Color(0xFFBA1A1A)
+val OnPrimaryLight = Color(0xFFFFFFFF)
+val PrimaryContainerLight = Color(0xFFFFDAD6)
+val OnPrimaryContainerLight = Color(0xFF410002)
+
+val SecondaryLight = Color(0xFF775652)
+val OnSecondaryLight = Color(0xFFFFFFFF)
+val SecondaryContainerLight = Color(0xFFFFDAD6)
+val OnSecondaryContainerLight = Color(0xFF2C1512)
+
+val TertiaryLight = Color(0xFF715B2E)
+val OnTertiaryLight = Color(0xFFFFFFFF)
+val TertiaryContainerLight = Color(0xFFFFDEA8)
+val OnTertiaryContainerLight = Color(0xFF261900)
+
+val ErrorLight = Color(0xFFBA1A1A)
+val OnErrorLight = Color(0xFFFFFFFF)
+val ErrorContainerLight = Color(0xFFFFDAD6)
+val OnErrorContainerLight = Color(0xFF410002)
+
+val BackgroundLight = Color(0xFFFFF8F7)
+val OnBackgroundLight = Color(0xFF231918)
+val SurfaceLight = Color(0xFFFFF8F7)
+val OnSurfaceLight = Color(0xFF231918)
+val SurfaceVariantLight = Color(0xFFF5DDDA)
+val OnSurfaceVariantLight = Color(0xFF534341)
+val OutlineLight = Color(0xFF857370)
+val OutlineVariantLight = Color(0xFFD8C2BF)
+val ScrimLight = Color(0xFF000000)
+val InverseSurfaceLight = Color(0xFF392E2D)
+val InverseOnSurfaceLight = Color(0xFFFFEDEB)
+val InversePrimaryLight = Color(0xFFFFB4AB)
+val SurfaceDimLight = Color(0xFFE8D6D4)
+val SurfaceBrightLight = Color(0xFFFFF8F7)
+val SurfaceContainerLowestLight = Color(0xFFFFFFFF)
+val SurfaceContainerLowLight = Color(0xFFFFF0EE)
+val SurfaceContainerLight2 = Color(0xFFFCEAE8)
+val SurfaceContainerHighLight = Color(0xFFF6E4E2)
+val SurfaceContainerHighestLight = Color(0xFFF0DEDD)
+
+// Dark scheme (primary theme for streaming app)
+val PrimaryDark = Color(0xFFFFB4AB)
+val OnPrimaryDark = Color(0xFF690005)
+val PrimaryContainerDark = Color(0xFF93000A)
+val OnPrimaryContainerDark = Color(0xFFFFDAD6)
+
+val SecondaryDark = Color(0xFFE7BDB8)
+val OnSecondaryDark = Color(0xFF442927)
+val SecondaryContainerDark = Color(0xFF5D3F3C)
+val OnSecondaryContainerDark = Color(0xFFFFDAD6)
+
+val TertiaryDark = Color(0xFFEDC06F)
+val OnTertiaryDark = Color(0xFF3E2D05)
+val TertiaryContainerDark = Color(0xFF584319)
+val OnTertiaryContainerDark = Color(0xFFFFDEA8)
+
+val ErrorDark = Color(0xFFFFB4AB)
+val OnErrorDark = Color(0xFF690005)
+val ErrorContainerDark = Color(0xFF93000A)
+val OnErrorContainerDark = Color(0xFFFFDAD6)
+
+val BackgroundDark = Color(0xFF1A1110)
+val OnBackgroundDark = Color(0xFFF0DEDD)
+val SurfaceDark = Color(0xFF1A1110)
+val OnSurfaceDark = Color(0xFFF0DEDD)
+val SurfaceVariantDark = Color(0xFF534341)
+val OnSurfaceVariantDark = Color(0xFFD8C2BF)
+val OutlineDark = Color(0xFFA08C8A)
+val OutlineVariantDark = Color(0xFF534341)
+val ScrimDark = Color(0xFF000000)
+val InverseSurfaceDark = Color(0xFFF0DEDD)
+val InverseOnSurfaceDark = Color(0xFF392E2D)
+val InversePrimaryDark = Color(0xFFBA1A1A)
+val SurfaceDimDark = Color(0xFF1A1110)
+val SurfaceBrightDark = Color(0xFF423735)
+val SurfaceContainerLowestDark = Color(0xFF140C0B)
+val SurfaceContainerLowDark = Color(0xFF231918)
+val SurfaceContainerDark2 = Color(0xFF271D1C)
+val SurfaceContainerHighDark = Color(0xFF322827)
+val SurfaceContainerHighestDark = Color(0xFF3D3231)
