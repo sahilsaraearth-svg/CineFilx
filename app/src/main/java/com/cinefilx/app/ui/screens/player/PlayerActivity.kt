@@ -34,7 +34,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import com.cinefilx.app.ui.theme.CineFilxTheme
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
@@ -52,8 +51,9 @@ class PlayerActivity : ComponentActivity() {
         val episode   = intent.getIntExtra(EXTRA_EPISODE, 1)
         val title     = intent.getStringExtra(EXTRA_TITLE) ?: "Now Playing"
 
+        // Use MaterialTheme directly — avoid CineFilxTheme which does window side-effects
         setContent {
-            CineFilxTheme {
+            MaterialTheme(colorScheme = darkColorScheme()) {
                 PlayerScreen(
                     tmdbId    = tmdbId,
                     imdbId    = imdbId,
@@ -111,12 +111,12 @@ class PlayerActivity : ComponentActivity() {
 data class StreamServer(val name: String, val tag: String)
 
 private val SERVERS = listOf(
-    StreamServer("VidSrc",    "vidsrc"),     // vidsrc.to  - huge library
-    StreamServer("VidSrc.me", "vidsrcme"),   // vidsrcme.ru - very reliable
-    StreamServer("2Embed",    "2embed"),     // 2embed.cc
-    StreamServer("VidBinge",  "vidbinge"),   // vidbinge.dev
-    StreamServer("VidSrc.icu","vidsrcicu"),  // vidsrc.icu
-    StreamServer("Videasy",   "videasy")     // player.videasy.net
+    StreamServer("VidSrc",     "vidsrc"),    // vidsrc.to
+    StreamServer("VidSrc.me",  "vidsrcme"),  // vidsrcme.ru
+    StreamServer("2Embed",     "2embed"),    // 2embed.cc
+    StreamServer("VidBinge",   "vidbinge"),  // vidbinge.dev
+    StreamServer("VidSrc.icu", "vidsrcicu"), // vidsrc.icu
+    StreamServer("Videasy",    "videasy")    // player.videasy.net
 )
 
 private fun buildEmbedUrl(
@@ -131,7 +131,6 @@ private fun buildEmbedUrl(
     val hasImdb = imdbId.startsWith("tt") && imdbId.length > 4
 
     return when (server) {
-        // vidsrc.to: supports both imdb and tmdb
         "vidsrc" -> if (isMovie)
             if (hasImdb) "https://vidsrc.to/embed/movie/$imdbId"
             else         "https://vidsrc.to/embed/movie/$tmdbId"
@@ -139,13 +138,11 @@ private fun buildEmbedUrl(
             if (hasImdb) "https://vidsrc.to/embed/tv/$imdbId/$season/$episode"
             else         "https://vidsrc.to/embed/tv/$tmdbId/$season/$episode"
 
-        // vidsrc.me (redirects to vidsrcme.ru) - tmdb only
         "vidsrcme" -> if (isMovie)
             "https://vidsrcme.ru/embed/movie?tmdb=$tmdbId"
         else
             "https://vidsrcme.ru/embed/tv?tmdb=$tmdbId&season=$season&episode=$episode"
 
-        // 2embed.cc - supports imdb and tmdb
         "2embed" -> if (isMovie)
             if (hasImdb) "https://www.2embed.cc/embed/$imdbId"
             else         "https://www.2embed.cc/embed/$tmdbId"
@@ -153,19 +150,16 @@ private fun buildEmbedUrl(
             if (hasImdb) "https://www.2embed.cc/embedtv/$imdbId&s=$season&e=$episode"
             else         "https://www.2embed.cc/embedtv/$tmdbId&s=$season&e=$episode"
 
-        // vidbinge.dev - tmdb only
         "vidbinge" -> if (isMovie)
             "https://vidbinge.dev/embed/movie/$tmdbId"
         else
             "https://vidbinge.dev/embed/tv/$tmdbId/$season/$episode"
 
-        // vidsrc.icu - tmdb only
         "vidsrcicu" -> if (isMovie)
             "https://vidsrc.icu/embed/movie/$tmdbId"
         else
             "https://vidsrc.icu/embed/tv/$tmdbId/$season/$episode"
 
-        // player.videasy.net - tmdb only
         "videasy" -> if (isMovie)
             "https://player.videasy.net/movie/$tmdbId"
         else
@@ -190,23 +184,9 @@ fun PlayerScreen(
 ) {
     var selectedServer by remember { mutableStateOf(0) }
     var showControls   by remember { mutableStateOf(true) }
+    var currentUrl     by remember { mutableStateOf("") }
     var webViewRef     by remember { mutableStateOf<WebView?>(null) }
     var isLoading      by remember { mutableStateOf(true) }
-
-    val embedUrl = remember(selectedServer, tmdbId, imdbId, mediaType, season, episode) {
-        buildEmbedUrl(
-            server    = SERVERS[selectedServer].tag,
-            tmdbId    = tmdbId,
-            imdbId    = imdbId,
-            mediaType = mediaType,
-            season    = season,
-            episode   = episode
-        )
-    }
-
-    LaunchedEffect(embedUrl) {
-        isLoading = true
-    }
 
     // Auto-hide controls after 4s
     LaunchedEffect(showControls) {
@@ -232,55 +212,54 @@ fun PlayerScreen(
                 WebView(ctx).apply {
                     webViewRef = this
                     settings.apply {
-                        javaScriptEnabled          = true
-                        domStorageEnabled          = true
-                        mixedContentMode           = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                        javaScriptEnabled                = true
+                        domStorageEnabled                = true
+                        mixedContentMode                 = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
                         mediaPlaybackRequiresUserGesture = false
-                        userAgentString            =
+                        userAgentString                  =
                             "Mozilla/5.0 (Linux; Android 13; Pixel 7) " +
                             "AppleWebKit/537.36 (KHTML, like Gecko) " +
                             "Chrome/124.0.6367.82 Mobile Safari/537.36"
-                        allowFileAccess            = true
+                        allowFileAccess                  = true
                         setSupportZoom(false)
-                        builtInZoomControls        = false
-                        displayZoomControls        = false
-                        loadWithOverviewMode       = true
-                        useWideViewPort            = true
-                        cacheMode                  = WebSettings.LOAD_DEFAULT
-                        allowContentAccess         = true
-                        databaseEnabled            = true
+                        builtInZoomControls              = false
+                        displayZoomControls              = false
+                        loadWithOverviewMode             = true
+                        useWideViewPort                  = true
+                        cacheMode                        = WebSettings.LOAD_DEFAULT
+                        allowContentAccess               = true
+                        databaseEnabled                  = true
                     }
                     webChromeClient = object : WebChromeClient() {}
                     webViewClient   = object : WebViewClient() {
                         override fun onPageFinished(view: WebView, url: String) {
                             isLoading = false
                         }
-                        // Never override URL loading — let WebView handle all redirects
                         override fun shouldOverrideUrlLoading(
                             view: WebView,
                             request: android.webkit.WebResourceRequest
                         ): Boolean = false
                     }
-                    loadUrl(embedUrl)
+                    val initialUrl = buildEmbedUrl(
+                        server    = SERVERS[0].tag,
+                        tmdbId    = tmdbId,
+                        imdbId    = imdbId,
+                        mediaType = mediaType,
+                        season    = season,
+                        episode   = episode
+                    )
+                    currentUrl = initialUrl
+                    loadUrl(initialUrl)
                 }
             },
-            update = { wv ->
-                val cur = wv.url ?: ""
-                // Only reload if the server changed significantly
-                if (!cur.contains(SERVERS[selectedServer].tag.take(6)) &&
-                    !cur.startsWith(embedUrl.take(25))
-                ) {
-                    isLoading = true
-                    wv.loadUrl(embedUrl)
-                }
-            }
+            update = { /* no-op: URL changes handled via webViewRef directly */ }
         )
 
         // Loading indicator
         if (isLoading) {
             CircularProgressIndicator(
-                modifier = Modifier.align(Alignment.Center),
-                color = Color(0xFFE50914),
+                modifier  = Modifier.align(Alignment.Center),
+                color     = Color(0xFFE50914),
                 strokeWidth = 3.dp
             )
         }
@@ -293,7 +272,7 @@ fun PlayerScreen(
                     .align(Alignment.TopCenter)
                     .background(Color.Black.copy(alpha = 0.75f))
             ) {
-                // Title + back + reload
+                // Title + back + reload row
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -311,11 +290,11 @@ fun PlayerScreen(
                     Text(
                         text = if (mediaType == "movie") title
                                else "$title · S${season}E${episode}",
-                        color = Color.White,
-                        fontSize = 14.sp,
+                        color      = Color.White,
+                        fontSize   = 14.sp,
                         fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.weight(1f),
-                        maxLines = 1
+                        modifier   = Modifier.weight(1f),
+                        maxLines   = 1
                     )
                     IconButton(onClick = {
                         isLoading = true
@@ -325,7 +304,7 @@ fun PlayerScreen(
                     }
                 }
 
-                // Server tabs — horizontal scroll so all fit
+                // Server tabs — horizontal scroll
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -339,8 +318,7 @@ fun PlayerScreen(
                             modifier = Modifier.clickable {
                                 if (selectedServer != index) {
                                     selectedServer = index
-                                    isLoading = true
-                                    // Force load new URL
+                                    isLoading      = true
                                     val newUrl = buildEmbedUrl(
                                         server    = SERVERS[index].tag,
                                         tmdbId    = tmdbId,
@@ -349,6 +327,7 @@ fun PlayerScreen(
                                         season    = season,
                                         episode   = episode
                                     )
+                                    currentUrl = newUrl
                                     webViewRef?.loadUrl(newUrl)
                                 }
                             },
@@ -357,12 +336,12 @@ fun PlayerScreen(
                                     else Color.White.copy(alpha = 0.20f)
                         ) {
                             Text(
-                                text = server.name,
-                                color = Color.White,
-                                fontSize = 11.sp,
+                                text       = server.name,
+                                color      = Color.White,
+                                fontSize   = 11.sp,
                                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                                textAlign = TextAlign.Center
+                                modifier   = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                textAlign  = TextAlign.Center
                             )
                         }
                     }
