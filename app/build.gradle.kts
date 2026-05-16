@@ -26,13 +26,24 @@ android {
         buildConfigField("String", "TMDB_IMAGE_BASE_URL", "\"https://image.tmdb.org/t/p/\"")
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = file("../cinefilx-release.jks")
+            storePassword = "cinefilx123"
+            keyAlias = "cinefilx"
+            keyPassword = "cinefilx123"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            signingConfig = signingConfigs.getByName("release")
         }
         debug {
             isDebuggable = true
