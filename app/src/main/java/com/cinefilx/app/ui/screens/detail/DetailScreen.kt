@@ -1,6 +1,11 @@
 package com.cinefilx.app.ui.screens.detail
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -8,8 +13,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -22,12 +29,17 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.cinefilx.app.data.model.EztvTorrent
 import com.cinefilx.app.data.model.MediaType
 import com.cinefilx.app.data.model.TmdbCast
+import com.cinefilx.app.data.model.TmdbEpisode
 import com.cinefilx.app.data.model.TmdbMovieDetail
+import com.cinefilx.app.data.model.TmdbSeason
+import com.cinefilx.app.data.model.YtsTorrent
 import com.cinefilx.app.ui.screens.player.PlayerActivity
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -38,113 +50,143 @@ fun DetailScreen(
     onBackClick: () -> Unit,
     viewModel: DetailViewModel = hiltViewModel()
 ) {
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val context = LocalContext.current
-    var showSourceDialog by remember { mutableStateOf(false) }
+    val uiState         by viewModel.uiState.collectAsStateWithLifecycle()
+    val isInWatchlist   by viewModel.isInWatchlist.collectAsStateWithLifecycle()
+    val context         = LocalContext.current
+    var showTorrentSheet by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         when {
-            uiState.isLoading -> {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                }
-            }
-            uiState.error != null -> {
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .padding(16.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            Icons.Filled.Warning,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.size(48.dp)
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Text(uiState.error ?: "", color = MaterialTheme.colorScheme.error)
-                        Spacer(Modifier.height(16.dp))
-                        Button(onClick = { viewModel.loadDetail() }) { Text("Retry") }
-                    }
-                }
-            }
+            uiState.isLoading -> LoadingBox()
+            uiState.error != null -> ErrorBox(uiState.error!!) { viewModel.loadDetail() }
             uiState.detail != null -> {
                 DetailContent(
-                    detail = uiState.detail!!,
-                    mediaType = uiState.mediaType,
-                    onPlayClick = {
-                        // Launch player with a demo stream URL
-                        val intent = Intent(context, PlayerActivity::class.java).apply {
-                            putExtra("MEDIA_TITLE", uiState.detail!!.displayTitle)
-                            putExtra("MEDIA_URL", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4")
-                            putExtra("MEDIA_ID", mediaId)
-                            putExtra("MEDIA_TYPE", mediaType.value)
-                        }
-                        context.startActivity(intent)
+                    detail        = uiState.detail!!,
+                    mediaType     = uiState.mediaType,
+                    imdbId        = uiState.imdbId,
+                    isInWatchlist = isInWatchlist,
+                    selectedSeason = uiState.selectedSeason,
+                    seasonDetail  = uiState.seasonDetail,
+                    seasonLoading = uiState.seasonLoading,
+                    onPlayClick   = { season, episode ->
+                        launchPlayer(
+                            context   = context,
+                            tmdbId    = mediaId,
+                            imdbId    = uiState.imdbId ?: "",
+                            mediaType = uiState.mediaType.value,
+                            season    = season,
+                            episode   = episode,
+                            title     = uiState.detail!!.displayTitle
+                        )
                     },
-                    onSourceDialogOpen = { showSourceDialog = true }
+                    onWatchlistClick  = { viewModel.toggleWatchlist() },
+                    onTorrentClick    = {
+                        viewModel.loadTorrents()
+                        showTorrentSheet = true
+                    },
+                    onSeasonSelect    = { viewModel.loadSeason(it) }
                 )
             }
         }
 
-        // Back button
+        // Back button (always visible)
         IconButton(
             onClick = onBackClick,
             modifier = Modifier
                 .statusBarsPadding()
                 .padding(8.dp)
         ) {
-            Surface(
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.8f)
-            ) {
+            Surface(shape = CircleShape, color = Color.Black.copy(alpha = 0.5f)) {
                 Icon(
                     Icons.Filled.ArrowBack,
                     contentDescription = "Back",
-                    tint = MaterialTheme.colorScheme.onSurface,
+                    tint = Color.White,
                     modifier = Modifier.padding(8.dp)
                 )
             }
         }
     }
 
-    if (showSourceDialog) {
-        SourceSelectionDialog(
-            onDismiss = { showSourceDialog = false },
-            onSourceSelect = { url ->
-                showSourceDialog = false
-                val intent = Intent(context, PlayerActivity::class.java).apply {
-                    putExtra("MEDIA_TITLE", uiState.detail?.displayTitle ?: "")
-                    putExtra("MEDIA_URL", url)
-                    putExtra("MEDIA_ID", mediaId)
-                    putExtra("MEDIA_TYPE", mediaType.value)
-                }
-                context.startActivity(intent)
-            }
-        )
+    // ── Torrent bottom sheet ───────────────────────────────────────────────────
+    if (showTorrentSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showTorrentSheet = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ) {
+            TorrentSheet(
+                mediaType     = uiState.mediaType,
+                movieTorrents = uiState.movieTorrents,
+                tvTorrents    = uiState.tvTorrents,
+                isLoading     = uiState.torrentLoading,
+                error         = uiState.torrentError,
+                onMagnetClick = { magnet -> openMagnet(context, magnet) },
+                onCopyClick   = { magnet -> copyToClipboard(context, magnet) }
+            )
+        }
     }
 }
 
+// ── helpers ───────────────────────────────────────────────────────────────────
+
+private fun launchPlayer(
+    context: Context,
+    tmdbId: Int,
+    imdbId: String,
+    mediaType: String,
+    season: Int,
+    episode: Int,
+    title: String
+) {
+    context.startActivity(
+        Intent(context, PlayerActivity::class.java).apply {
+            putExtra(PlayerActivity.EXTRA_TMDB_ID,    tmdbId)
+            putExtra(PlayerActivity.EXTRA_IMDB_ID,    imdbId)
+            putExtra(PlayerActivity.EXTRA_MEDIA_TYPE, mediaType)
+            putExtra(PlayerActivity.EXTRA_SEASON,     season)
+            putExtra(PlayerActivity.EXTRA_EPISODE,    episode)
+            putExtra(PlayerActivity.EXTRA_TITLE,      title)
+        }
+    )
+}
+
+private fun openMagnet(context: Context, magnet: String) {
+    runCatching {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(magnet)))
+    }.onFailure {
+        Toast.makeText(context, "No torrent app found. Magnet copied.", Toast.LENGTH_SHORT).show()
+        copyToClipboard(context, magnet)
+    }
+}
+
+private fun copyToClipboard(context: Context, text: String) {
+    val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    cm.setPrimaryClip(ClipData.newPlainText("Magnet Link", text))
+    Toast.makeText(context, "Magnet link copied", Toast.LENGTH_SHORT).show()
+}
+
+// ── main content ──────────────────────────────────────────────────────────────
+
 @Composable
-fun DetailContent(
+private fun DetailContent(
     detail: TmdbMovieDetail,
     mediaType: MediaType,
-    onPlayClick: () -> Unit,
-    onSourceDialogOpen: () -> Unit
+    imdbId: String?,
+    isInWatchlist: Boolean,
+    selectedSeason: Int,
+    seasonDetail: com.cinefilx.app.data.model.TmdbSeasonDetail?,
+    seasonLoading: Boolean,
+    onPlayClick: (season: Int, episode: Int) -> Unit,
+    onWatchlistClick: () -> Unit,
+    onTorrentClick: () -> Unit,
+    onSeasonSelect: (Int) -> Unit
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 80.dp)
     ) {
-        // Hero image
+        // ── Hero backdrop ──────────────────────────────────────────────────
         item {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(320.dp)
-            ) {
+            Box(modifier = Modifier.fillMaxWidth().height(340.dp)) {
                 AsyncImage(
                     model = detail.backdropUrl().ifEmpty { detail.posterUrl() },
                     contentDescription = detail.displayTitle,
@@ -152,31 +194,23 @@ fun DetailContent(
                     modifier = Modifier.fillMaxSize()
                 )
                 Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(
-                                    Color.Transparent,
-                                    MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
-                                    MaterialTheme.colorScheme.surface
-                                ),
-                                startY = 150f
-                            )
+                    modifier = Modifier.fillMaxSize().background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+                                MaterialTheme.colorScheme.surface
+                            ),
+                            startY = 100f
                         )
+                    )
                 )
-                // Poster overlay
                 Row(
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(16.dp),
+                    modifier = Modifier.align(Alignment.BottomStart).padding(16.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                     verticalAlignment = Alignment.Bottom
                 ) {
-                    Card(
-                        modifier = Modifier.size(100.dp, 150.dp),
-                        shape = MaterialTheme.shapes.medium
-                    ) {
+                    Card(modifier = Modifier.size(100.dp, 150.dp), shape = MaterialTheme.shapes.medium) {
                         AsyncImage(
                             model = detail.posterUrl(),
                             contentDescription = null,
@@ -190,52 +224,25 @@ fun DetailContent(
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
+                            maxLines = 2, overflow = TextOverflow.Ellipsis
                         )
                         Spacer(Modifier.height(4.dp))
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                Icons.Filled.Star,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.tertiary,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Text(
-                                text = String.format("%.1f", detail.voteAverage),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.tertiary
-                            )
-                            Text(
-                                text = "• ${detail.year}",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Icon(Icons.Filled.Star, null, tint = Color(0xFFFFC107), modifier = Modifier.size(14.dp))
+                            Text(String.format("%.1f", detail.voteAverage), style = MaterialTheme.typography.labelMedium, color = Color(0xFFFFC107))
+                            Text("• ${detail.year}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             if (detail.displayRuntime.isNotEmpty()) {
-                                Text(
-                                    text = "• ${detail.displayRuntime}",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                                Text("• ${detail.displayRuntime}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                         Spacer(Modifier.height(6.dp))
-                        // Genres
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             detail.genres.take(3).forEach { genre ->
-                                Surface(
-                                    shape = MaterialTheme.shapes.extraSmall,
-                                    color = MaterialTheme.colorScheme.secondaryContainer
-                                ) {
-                                    Text(
-                                        text = genre.name,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                    )
+                                Surface(shape = MaterialTheme.shapes.extraSmall, color = MaterialTheme.colorScheme.secondaryContainer) {
+                                    Text(genre.name, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
                                 }
                             }
                         }
@@ -244,36 +251,37 @@ fun DetailContent(
             }
         }
 
-        // Action buttons
+        // ── Action buttons ────────────────────────────────────────────────
         item {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Button(
-                    onClick = onPlayClick,
+                    onClick = {
+                        onPlayClick(
+                            if (mediaType == MediaType.MOVIE) 1 else selectedSeason,
+                            1
+                        )
+                    },
                     modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary
-                    )
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                 ) {
-                    Icon(Icons.Filled.PlayArrow, contentDescription = null)
+                    Icon(Icons.Filled.PlayArrow, null)
                     Spacer(Modifier.width(4.dp))
-                    Text("Play", fontWeight = FontWeight.Bold)
+                    Text("Watch", fontWeight = FontWeight.Bold)
                 }
                 OutlinedButton(
-                    onClick = onSourceDialogOpen,
+                    onClick = onTorrentClick,
                     modifier = Modifier.weight(1f)
                 ) {
-                    Icon(Icons.Filled.List, contentDescription = null)
+                    Icon(Icons.Filled.Download, null)
                     Spacer(Modifier.width(4.dp))
-                    Text("Sources")
+                    Text("Torrent")
                 }
-                IconButton(onClick = { }) {
+                IconButton(onClick = onWatchlistClick) {
                     Icon(
-                        Icons.Filled.FavoriteBorder,
+                        if (isInWatchlist) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
                         contentDescription = "Watchlist",
                         tint = MaterialTheme.colorScheme.primary
                     )
@@ -281,41 +289,25 @@ fun DetailContent(
             }
         }
 
-        // Overview
+        // ── Overview ──────────────────────────────────────────────────────
         item {
             Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                Text(
-                    text = "Overview",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
+                Text("Overview", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(8.dp))
-                Text(
-                    text = detail.overview,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    lineHeight = MaterialTheme.typography.bodyMedium.lineHeight
-                )
+                Text(detail.overview, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
 
-        // Tagline
+        // ── Tagline ───────────────────────────────────────────────────────
         if (!detail.tagline.isNullOrEmpty()) {
             item {
                 Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer
-                    )
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
                 ) {
                     Text(
-                        text = "\"${detail.tagline}\"",
-                        style = MaterialTheme.typography.bodyMedium.copy(
-                            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
-                        ),
+                        "\"${detail.tagline}\"",
+                        style = MaterialTheme.typography.bodyMedium.copy(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic),
                         color = MaterialTheme.colorScheme.onSecondaryContainer,
                         modifier = Modifier.padding(16.dp)
                     )
@@ -323,270 +315,299 @@ fun DetailContent(
             }
         }
 
-        // Cast
+        // ── Seasons / Episodes (TV only) ──────────────────────────────────
+        if (mediaType != MediaType.MOVIE) {
+            val seasons = detail.seasons?.filter { it.seasonNumber > 0 } ?: emptyList()
+            if (seasons.isNotEmpty()) {
+                item {
+                    SeasonsSection(
+                        seasons        = seasons,
+                        selectedSeason = selectedSeason,
+                        onSeasonSelect = onSeasonSelect
+                    )
+                }
+            }
+
+            if (seasonLoading) {
+                item {
+                    Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                    }
+                }
+            } else if (seasonDetail != null) {
+                items(seasonDetail.episodes) { episode ->
+                    EpisodeRow(
+                        episode = episode,
+                        onClick = { onPlayClick(selectedSeason, episode.episodeNumber) }
+                    )
+                }
+            }
+        }
+
+        // ── Cast ──────────────────────────────────────────────────────────
         val cast = detail.credits?.cast?.take(12) ?: emptyList()
         if (cast.isNotEmpty()) {
             item {
                 Column(modifier = Modifier.padding(vertical = 8.dp)) {
-                    Text(
-                        text = "Cast",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                    Text("Cast", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
                     LazyRow(
                         contentPadding = PaddingValues(horizontal = 16.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        items(cast) { castMember ->
-                            CastCard(castMember = castMember)
-                        }
+                        items(cast) { CastCard(it) }
                     }
                 }
             }
         }
 
-        // Trailer
-        val trailers = detail.videos?.results?.filter {
-            it.site == "YouTube" && it.type == "Trailer"
-        } ?: emptyList()
-
-        if (trailers.isNotEmpty()) {
-            item {
-                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                    Text(
-                        text = "Trailers",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    trailers.take(2).forEach { trailer ->
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp),
-                            shape = MaterialTheme.shapes.medium
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                AsyncImage(
-                                    model = trailer.youtubeThumbnail,
-                                    contentDescription = null,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier
-                                        .size(80.dp, 50.dp)
-                                        .clip(MaterialTheme.shapes.small)
-                                )
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = trailer.name,
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                                Icon(
-                                    Icons.Filled.PlayCircle,
-                                    contentDescription = "Play trailer",
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(32.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // More info
+        // ── Details card ──────────────────────────────────────────────────
         item {
             Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
                 shape = MaterialTheme.shapes.medium,
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainer
-                )
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = "Details",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                    Text("Details", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(8.dp))
-                    if (detail.status.isNotEmpty()) {
-                        InfoRow(label = "Status", value = detail.status)
-                    }
-                    if (detail.numberOfSeasons != null) {
-                        InfoRow(label = "Seasons", value = "${detail.numberOfSeasons}")
-                    }
-                    if (detail.numberOfEpisodes != null) {
-                        InfoRow(label = "Episodes", value = "${detail.numberOfEpisodes}")
-                    }
+                    if (detail.status.isNotEmpty()) InfoRow("Status", detail.status)
+                    if (!imdbId.isNullOrEmpty()) InfoRow("IMDB", imdbId)
+                    if (detail.numberOfSeasons != null) InfoRow("Seasons", "${detail.numberOfSeasons}")
+                    if (detail.numberOfEpisodes != null) InfoRow("Episodes", "${detail.numberOfEpisodes}")
                     val languages = detail.spokenLanguages.take(3).joinToString(", ") { it.englishName }
-                    if (languages.isNotEmpty()) {
-                        InfoRow(label = "Languages", value = languages)
-                    }
+                    if (languages.isNotEmpty()) InfoRow("Languages", languages)
                 }
             }
         }
     }
 }
 
+// ── Seasons section ───────────────────────────────────────────────────────────
+
 @Composable
-fun InfoRow(label: String, value: String) {
+private fun SeasonsSection(
+    seasons: List<TmdbSeason>,
+    selectedSeason: Int,
+    onSeasonSelect: (Int) -> Unit
+) {
+    Column(modifier = Modifier.padding(top = 12.dp)) {
+        Text(
+            "Seasons",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+        )
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(seasons) { season ->
+                val selected = season.seasonNumber == selectedSeason
+                FilterChip(
+                    selected = selected,
+                    onClick  = { onSeasonSelect(season.seasonNumber) },
+                    label    = { Text("S${season.seasonNumber}") }
+                )
+            }
+        }
+    }
+}
+
+// ── Episode row ───────────────────────────────────────────────────────────────
+
+@Composable
+private fun EpisodeRow(episode: TmdbEpisode, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .clickable { onClick() },
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
+    ) {
+        Row(
+            modifier = Modifier.padding(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // Thumbnail or placeholder
+            if (episode.stillPath != null) {
+                AsyncImage(
+                    model = episode.stillUrl(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.size(100.dp, 60.dp).clip(MaterialTheme.shapes.small)
+                )
+            } else {
+                Box(
+                    Modifier
+                        .size(100.dp, 60.dp)
+                        .clip(MaterialTheme.shapes.small)
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Filled.PlayCircle, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "E${episode.episodeNumber} • ${episode.name}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis
+                )
+                if (episode.overview.isNotEmpty()) {
+                    Text(
+                        episode.overview,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2, overflow = TextOverflow.Ellipsis
+                    )
+                }
+                if (episode.runtime != null) {
+                    Text("${episode.runtime}m", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            Icon(Icons.Filled.PlayArrow, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
+        }
+    }
+}
+
+// ── Torrent sheet ─────────────────────────────────────────────────────────────
+
+@Composable
+private fun TorrentSheet(
+    mediaType: MediaType,
+    movieTorrents: List<YtsTorrent>,
+    tvTorrents: List<EztvTorrent>,
+    isLoading: Boolean,
+    error: String?,
+    onMagnetClick: (String) -> Unit,
+    onCopyClick: (String) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp)
+            .navigationBarsPadding()
+    ) {
+        Text("Torrents", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(12.dp))
+
+        when {
+            isLoading -> Box(Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+            error != null -> Text("Failed to load torrents: $error", color = MaterialTheme.colorScheme.error)
+            mediaType == MediaType.MOVIE -> {
+                if (movieTorrents.isEmpty()) {
+                    Text("No torrents found", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    movieTorrents.forEach { t ->
+                        TorrentRow(
+                            title    = "${t.quality} ${t.type}",
+                            info     = "${t.size} • ${t.seeds} seeds",
+                            magnet   = t.magnetUrl,
+                            onMagnet = onMagnetClick,
+                            onCopy   = onCopyClick
+                        )
+                    }
+                }
+            }
+            else -> {
+                val shown = tvTorrents.take(30)
+                if (shown.isEmpty()) {
+                    Text("No torrents found", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    shown.forEach { t ->
+                        TorrentRow(
+                            title    = t.title.take(60),
+                            info     = "${t.displaySize} • ${t.seeds} seeds",
+                            magnet   = t.magnetUrl,
+                            onMagnet = onMagnetClick,
+                            onCopy   = onCopyClick
+                        )
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(16.dp))
+    }
+}
+
+@Composable
+private fun TorrentRow(
+    title: String,
+    info: String,
+    magnet: String,
+    onMagnet: (String) -> Unit,
+    onCopy: (String) -> Unit
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        horizontalArrangement = Arrangement.SpaceBetween
+            .clickable { onMagnet(magnet) }
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodySmall,
-            fontWeight = FontWeight.Medium,
-            color = MaterialTheme.colorScheme.onSurface
-        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(info, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        IconButton(onClick = { onMagnet(magnet) }) {
+            Icon(Icons.Filled.Download, "Open magnet", tint = MaterialTheme.colorScheme.primary)
+        }
+        IconButton(onClick = { onCopy(magnet) }) {
+            Icon(Icons.Filled.ContentCopy, "Copy magnet", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+}
+
+// ── Reusable composables ──────────────────────────────────────────────────────
+
+@Composable
+fun InfoRow(label: String, value: String) {
+    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
     }
 }
 
 @Composable
 fun CastCard(castMember: TmdbCast) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.width(80.dp)
-    ) {
-        Card(
-            modifier = Modifier.size(64.dp),
-            shape = CircleShape
-        ) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(72.dp)) {
+        Card(modifier = Modifier.size(60.dp), shape = CircleShape) {
             if (castMember.profilePath != null) {
-                AsyncImage(
-                    model = castMember.profileUrl(),
-                    contentDescription = castMember.name,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
+                AsyncImage(model = castMember.profileUrl(), contentDescription = castMember.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
             } else {
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.surfaceContainerHigh),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        Icons.Filled.Person,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerHigh), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Filled.Person, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
         Spacer(Modifier.height(4.dp))
-        Text(
-            text = castMember.name,
-            style = MaterialTheme.typography.labelSmall,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.fillMaxWidth()
-        )
-        Text(
-            text = castMember.character,
-            style = MaterialTheme.typography.labelSmall,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.fillMaxWidth()
-        )
+        Text(castMember.name, style = MaterialTheme.typography.labelSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
 }
 
 @Composable
-fun SourceSelectionDialog(
-    onDismiss: () -> Unit,
-    onSourceSelect: (String) -> Unit
-) {
-    val sources = listOf(
-        Triple("Server 1 (CDN)", "1080p", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"),
-        Triple("Server 2 (HLS)", "720p", "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"),
-        Triple("Server 3 (CDN)", "480p", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4")
-    )
+private fun LoadingBox() {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+    }
+}
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        icon = {
-            Icon(Icons.Filled.PlayCircle, contentDescription = null)
-        },
-        title = {
-            Text(
-                "Select Source",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold
-            )
-        },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                sources.forEach { (name, quality, url) ->
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onSourceSelect(url) },
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                        )
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column {
-                                Text(
-                                    text = name,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Surface(
-                                    shape = MaterialTheme.shapes.extraSmall,
-                                    color = MaterialTheme.colorScheme.primaryContainer
-                                ) {
-                                    Text(
-                                        text = quality,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                    )
-                                }
-                            }
-                            Icon(
-                                Icons.Filled.PlayArrow,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        },
-        shape = MaterialTheme.shapes.extraLarge
-    )
+@Composable
+private fun ErrorBox(msg: String, onRetry: () -> Unit) {
+    Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(Icons.Filled.Warning, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(48.dp))
+            Spacer(Modifier.height(8.dp))
+            Text(msg, color = MaterialTheme.colorScheme.error)
+            Spacer(Modifier.height(16.dp))
+            Button(onClick = onRetry) { Text("Retry") }
+        }
+    }
 }

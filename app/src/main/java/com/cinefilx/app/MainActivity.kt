@@ -7,9 +7,11 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Settings
@@ -27,24 +29,18 @@ import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             var themeMode by remember { mutableStateOf(ThemeMode.SYSTEM) }
-
             val darkTheme: Boolean? = when (themeMode) {
                 ThemeMode.SYSTEM -> null
-                ThemeMode.LIGHT -> false
-                ThemeMode.DARK -> true
+                ThemeMode.LIGHT  -> false
+                ThemeMode.DARK   -> true
             }
-
             CineFilxTheme(darkTheme = darkTheme) {
-                MainScreen(
-                    themeMode = themeMode,
-                    onThemeChange = { themeMode = it }
-                )
+                MainScreen(themeMode = themeMode, onThemeChange = { themeMode = it })
             }
         }
     }
@@ -58,36 +54,18 @@ data class BottomNavItem(
 )
 
 @Composable
-fun MainScreen(
-    themeMode: ThemeMode,
-    onThemeChange: (ThemeMode) -> Unit
-) {
+fun MainScreen(themeMode: ThemeMode, onThemeChange: (ThemeMode) -> Unit) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
     val bottomNavItems = listOf(
-        BottomNavItem(
-            route = Screen.Home.route,
-            label = "Home",
-            selectedIcon = Icons.Filled.Home,
-            unselectedIcon = Icons.Outlined.Home
-        ),
-        BottomNavItem(
-            route = Screen.Explore.route,
-            label = "Explore",
-            selectedIcon = Icons.Filled.Explore,
-            unselectedIcon = Icons.Outlined.Explore
-        ),
-        BottomNavItem(
-            route = Screen.Settings.route,
-            label = "Settings",
-            selectedIcon = Icons.Filled.Settings,
-            unselectedIcon = Icons.Outlined.Settings
-        )
+        BottomNavItem(Screen.Home.route,      "Home",      Icons.Filled.Home,            Icons.Outlined.Home),
+        BottomNavItem(Screen.Explore.route,   "Explore",   Icons.Filled.Explore,         Icons.Outlined.Explore),
+        BottomNavItem(Screen.Watchlist.route, "Watchlist", Icons.Filled.Bookmark,        Icons.Outlined.BookmarkBorder),
+        BottomNavItem(Screen.Settings.route,  "Settings",  Icons.Filled.Settings,        Icons.Outlined.Settings)
     )
 
-    // Only show bottom nav on top-level screens
     val showBottomBar = currentRoute in bottomNavItems.map { it.route }
 
     Scaffold(
@@ -99,18 +77,16 @@ fun MainScreen(
                         val selected = currentRoute == item.route
                         NavigationBarItem(
                             selected = selected,
-                            onClick = {
+                            onClick  = {
                                 navController.navigate(item.route) {
-                                    popUpTo(navController.graph.findStartDestination().id) {
-                                        saveState = true
-                                    }
+                                    popUpTo(navController.graph.findStartDestination().id) { saveState = true }
                                     launchSingleTop = true
                                     restoreState = true
                                 }
                             },
                             icon = {
                                 Icon(
-                                    imageVector = if (selected) item.selectedIcon else item.unselectedIcon,
+                                    if (selected) item.selectedIcon else item.unselectedIcon,
                                     contentDescription = item.label
                                 )
                             },
@@ -123,8 +99,8 @@ fun MainScreen(
     ) { innerPadding ->
         CineFilxNavGraph(
             navController = navController,
-            modifier = Modifier.padding(innerPadding),
-            themeMode = themeMode,
+            modifier      = Modifier.padding(innerPadding),
+            themeMode     = themeMode,
             onThemeChange = onThemeChange
         )
     }

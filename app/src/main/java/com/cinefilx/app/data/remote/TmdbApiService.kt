@@ -1,7 +1,9 @@
 package com.cinefilx.app.data.remote
 
+import com.cinefilx.app.data.model.TmdbExternalIds
 import com.cinefilx.app.data.model.TmdbMovieDetail
 import com.cinefilx.app.data.model.TmdbMovieResponse
+import com.cinefilx.app.data.model.TmdbSeasonDetail
 import retrofit2.Response
 import retrofit2.http.GET
 import retrofit2.http.Path
@@ -9,14 +11,14 @@ import retrofit2.http.Query
 
 interface TmdbApiService {
 
-    // Trending
+    // ── Trending ─────────────────────────────────────────────────────────────
     @GET("trending/all/week")
     suspend fun getTrendingAll(
         @Query("api_key") apiKey: String,
         @Query("page") page: Int = 1
     ): Response<TmdbMovieResponse>
 
-    // Movies
+    // ── Movies ────────────────────────────────────────────────────────────────
     @GET("movie/popular")
     suspend fun getPopularMovies(
         @Query("api_key") apiKey: String,
@@ -45,10 +47,16 @@ interface TmdbApiService {
     suspend fun getMovieDetail(
         @Path("movie_id") movieId: Int,
         @Query("api_key") apiKey: String,
-        @Query("append_to_response") appendToResponse: String = "credits,videos,similar"
+        @Query("append_to_response") appendToResponse: String = "credits,videos,similar,external_ids"
     ): Response<TmdbMovieDetail>
 
-    // TV Series
+    @GET("movie/{movie_id}/external_ids")
+    suspend fun getMovieExternalIds(
+        @Path("movie_id") movieId: Int,
+        @Query("api_key") apiKey: String
+    ): Response<TmdbExternalIds>
+
+    // ── TV Series ─────────────────────────────────────────────────────────────
     @GET("tv/popular")
     suspend fun getPopularTv(
         @Query("api_key") apiKey: String,
@@ -71,10 +79,23 @@ interface TmdbApiService {
     suspend fun getTvDetail(
         @Path("tv_id") tvId: Int,
         @Query("api_key") apiKey: String,
-        @Query("append_to_response") appendToResponse: String = "credits,videos,similar"
+        @Query("append_to_response") appendToResponse: String = "credits,videos,similar,external_ids,seasons"
     ): Response<TmdbMovieDetail>
 
-    // Anime (TV with genre 16 = Animation, or keyword search)
+    @GET("tv/{tv_id}/external_ids")
+    suspend fun getTvExternalIds(
+        @Path("tv_id") tvId: Int,
+        @Query("api_key") apiKey: String
+    ): Response<TmdbExternalIds>
+
+    @GET("tv/{tv_id}/season/{season_number}")
+    suspend fun getSeasonDetail(
+        @Path("tv_id") tvId: Int,
+        @Path("season_number") seasonNumber: Int,
+        @Query("api_key") apiKey: String
+    ): Response<TmdbSeasonDetail>
+
+    // ── Anime ─────────────────────────────────────────────────────────────────
     @GET("discover/tv")
     suspend fun getAnime(
         @Query("api_key") apiKey: String,
@@ -94,7 +115,7 @@ interface TmdbApiService {
         @Query("page") page: Int = 1
     ): Response<TmdbMovieResponse>
 
-    // Search
+    // ── Search ────────────────────────────────────────────────────────────────
     @GET("search/multi")
     suspend fun searchMulti(
         @Query("api_key") apiKey: String,

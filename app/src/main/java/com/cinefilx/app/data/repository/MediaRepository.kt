@@ -3,8 +3,9 @@ package com.cinefilx.app.data.repository
 import com.cinefilx.app.BuildConfig
 import com.cinefilx.app.data.model.MediaItem
 import com.cinefilx.app.data.model.MediaType
+import com.cinefilx.app.data.model.TmdbExternalIds
 import com.cinefilx.app.data.model.TmdbMovieDetail
-import com.cinefilx.app.data.model.TmdbMovieResponse
+import com.cinefilx.app.data.model.TmdbSeasonDetail
 import com.cinefilx.app.data.model.toMediaItem
 import com.cinefilx.app.data.remote.TmdbApiService
 import kotlinx.coroutines.Dispatchers
@@ -46,11 +47,8 @@ class MediaRepository @Inject constructor(
         safeApiCall {
             val response = api.getPopularMovies(apiKey, page)
             if (response.isSuccessful) {
-                val items = response.body()?.results?.map { it.toMediaItem(MediaType.MOVIE) } ?: emptyList()
-                Result.Success(items)
-            } else {
-                Result.Error("API Error: ${response.code()}")
-            }
+                Result.Success(response.body()?.results?.map { it.toMediaItem(MediaType.MOVIE) } ?: emptyList())
+            } else Result.Error("API Error: ${response.code()}")
         }
     }
 
@@ -58,11 +56,8 @@ class MediaRepository @Inject constructor(
         safeApiCall {
             val response = api.getTopRatedMovies(apiKey, page)
             if (response.isSuccessful) {
-                val items = response.body()?.results?.map { it.toMediaItem(MediaType.MOVIE) } ?: emptyList()
-                Result.Success(items)
-            } else {
-                Result.Error("API Error: ${response.code()}")
-            }
+                Result.Success(response.body()?.results?.map { it.toMediaItem(MediaType.MOVIE) } ?: emptyList())
+            } else Result.Error("API Error: ${response.code()}")
         }
     }
 
@@ -70,11 +65,8 @@ class MediaRepository @Inject constructor(
         safeApiCall {
             val response = api.getNowPlayingMovies(apiKey)
             if (response.isSuccessful) {
-                val items = response.body()?.results?.map { it.toMediaItem(MediaType.MOVIE) } ?: emptyList()
-                Result.Success(items)
-            } else {
-                Result.Error("API Error: ${response.code()}")
-            }
+                Result.Success(response.body()?.results?.map { it.toMediaItem(MediaType.MOVIE) } ?: emptyList())
+            } else Result.Error("API Error: ${response.code()}")
         }
     }
 
@@ -82,11 +74,8 @@ class MediaRepository @Inject constructor(
         safeApiCall {
             val response = api.getPopularTv(apiKey, page)
             if (response.isSuccessful) {
-                val items = response.body()?.results?.map { it.toMediaItem(MediaType.TV) } ?: emptyList()
-                Result.Success(items)
-            } else {
-                Result.Error("API Error: ${response.code()}")
-            }
+                Result.Success(response.body()?.results?.map { it.toMediaItem(MediaType.TV) } ?: emptyList())
+            } else Result.Error("API Error: ${response.code()}")
         }
     }
 
@@ -94,11 +83,8 @@ class MediaRepository @Inject constructor(
         safeApiCall {
             val response = api.getTopRatedTv(apiKey)
             if (response.isSuccessful) {
-                val items = response.body()?.results?.map { it.toMediaItem(MediaType.TV) } ?: emptyList()
-                Result.Success(items)
-            } else {
-                Result.Error("API Error: ${response.code()}")
-            }
+                Result.Success(response.body()?.results?.map { it.toMediaItem(MediaType.TV) } ?: emptyList())
+            } else Result.Error("API Error: ${response.code()}")
         }
     }
 
@@ -106,11 +92,8 @@ class MediaRepository @Inject constructor(
         safeApiCall {
             val response = api.getAnime(apiKey, page = page)
             if (response.isSuccessful) {
-                val items = response.body()?.results?.map { it.toMediaItem(MediaType.ANIME) } ?: emptyList()
-                Result.Success(items)
-            } else {
-                Result.Error("API Error: ${response.code()}")
-            }
+                Result.Success(response.body()?.results?.map { it.toMediaItem(MediaType.ANIME) } ?: emptyList())
+            } else Result.Error("API Error: ${response.code()}")
         }
     }
 
@@ -118,11 +101,8 @@ class MediaRepository @Inject constructor(
         safeApiCall {
             val response = api.getTopRatedAnime(apiKey)
             if (response.isSuccessful) {
-                val items = response.body()?.results?.map { it.toMediaItem(MediaType.ANIME) } ?: emptyList()
-                Result.Success(items)
-            } else {
-                Result.Error("API Error: ${response.code()}")
-            }
+                Result.Success(response.body()?.results?.map { it.toMediaItem(MediaType.ANIME) } ?: emptyList())
+            } else Result.Error("API Error: ${response.code()}")
         }
     }
 
@@ -131,9 +111,7 @@ class MediaRepository @Inject constructor(
             val response = api.getMovieDetail(id, apiKey)
             if (response.isSuccessful && response.body() != null) {
                 Result.Success(response.body()!!)
-            } else {
-                Result.Error("API Error: ${response.code()}")
-            }
+            } else Result.Error("API Error: ${response.code()}")
         }
     }
 
@@ -142,11 +120,37 @@ class MediaRepository @Inject constructor(
             val response = api.getTvDetail(id, apiKey)
             if (response.isSuccessful && response.body() != null) {
                 Result.Success(response.body()!!)
-            } else {
-                Result.Error("API Error: ${response.code()}")
-            }
+            } else Result.Error("API Error: ${response.code()}")
         }
     }
+
+    suspend fun getMovieExternalIds(id: Int): Result<TmdbExternalIds> = withContext(Dispatchers.IO) {
+        safeApiCall {
+            val response = api.getMovieExternalIds(id, apiKey)
+            if (response.isSuccessful && response.body() != null) {
+                Result.Success(response.body()!!)
+            } else Result.Error("API Error: ${response.code()}")
+        }
+    }
+
+    suspend fun getTvExternalIds(id: Int): Result<TmdbExternalIds> = withContext(Dispatchers.IO) {
+        safeApiCall {
+            val response = api.getTvExternalIds(id, apiKey)
+            if (response.isSuccessful && response.body() != null) {
+                Result.Success(response.body()!!)
+            } else Result.Error("API Error: ${response.code()}")
+        }
+    }
+
+    suspend fun getSeasonDetail(tvId: Int, seasonNumber: Int): Result<TmdbSeasonDetail> =
+        withContext(Dispatchers.IO) {
+            safeApiCall {
+                val response = api.getSeasonDetail(tvId, seasonNumber, apiKey)
+                if (response.isSuccessful && response.body() != null) {
+                    Result.Success(response.body()!!)
+                } else Result.Error("API Error: ${response.code()}")
+            }
+        }
 
     suspend fun searchMedia(query: String): Result<List<MediaItem>> = withContext(Dispatchers.IO) {
         safeApiCall {
@@ -162,9 +166,7 @@ class MediaRepository @Inject constructor(
                         movie.toMediaItem(type)
                     } ?: emptyList()
                 Result.Success(items)
-            } else {
-                Result.Error("API Error: ${response.code()}")
-            }
+            } else Result.Error("API Error: ${response.code()}")
         }
     }
 
