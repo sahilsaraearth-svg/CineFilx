@@ -114,12 +114,15 @@ class DetailViewModel @Inject constructor(
     }
 
     fun loadTorrents() {
-        val imdbId = _uiState.value.imdbId ?: return
+        val detail = _uiState.value.detail ?: return
         val mediaType = _uiState.value.mediaType
+        val title = detail.displayTitle
+        val year = detail.year ?: ""
+        val season = _uiState.value.selectedSeason
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(torrentLoading = true, torrentError = null)
             if (mediaType == MediaType.MOVIE) {
-                when (val r = torrentRepo.getMovieTorrents(imdbId)) {
+                when (val r = torrentRepo.getMovieTorrents(title, year)) {
                     is Result.Success -> _uiState.value = _uiState.value.copy(
                         torrentLoading = false, movieTorrents = r.data
                     )
@@ -129,7 +132,8 @@ class DetailViewModel @Inject constructor(
                     else -> _uiState.value = _uiState.value.copy(torrentLoading = false)
                 }
             } else {
-                when (val r = torrentRepo.getTvTorrents(imdbId)) {
+                // Default to episode 1 of selected season for initial torrent list
+                when (val r = torrentRepo.getTvTorrents(title, season, 1)) {
                     is Result.Success -> _uiState.value = _uiState.value.copy(
                         torrentLoading = false, tvTorrents = r.data
                     )

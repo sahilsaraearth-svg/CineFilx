@@ -4,146 +4,143 @@ import com.cinefilx.app.data.model.EztvTorrent
 import com.cinefilx.app.data.model.YtsTorrent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
-import java.net.URL
+import org.json.JSONArray
+import java.net.URLEncoder
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Torrent repository using direct HTTP calls (no Retrofit) so we can
- * easily try multiple mirror URLs when one fails DNS.
+ * Torrent repository using apibay.org (The Pirate Bay API).
+ * cat=201 = Movies, cat=205 = TV Shows
  */
 @Singleton
 class TorrentRepository @Inject constructor() {
 
-    // ── YTS mirrors (tried in order) ─────────────────────────────────────────
-    private val ytsMirrors = listOf(
-        "https://yts.mx/api/v2",
-        "https://yts.pm/api/v2",
-        "https://yts.lt/api/v2",
-        "https://yts.rs/api/v2"
-    )
-
-    // ── EZTV mirrors ─────────────────────────────────────────────────────────
-    private val eztvMirrors = listOf(
-        "https://eztv.re/api",
-        "https://eztv.wf/api",
-        "https://eztvx.to/api",
-        "https://eztv.tf/api"
+    private val trackers = listOf(
+        "udp://tracker.opentrackr.org:1337/announce",
+        "udp://open.tracker.cl:1337/announce",
+        "udp://tracker.openbittorrent.com:80",
+        "udp://tracker.internetwarriors.net:1337/announce",
+        "udp://9.rarbg.to:2710/announce"
     )
 
     /**
-     * Movie torrents from YTS. imdbId = full "tt1234567" format.
+     * Movie torrents from apibay.org. Searches by title + year.
      */
-    suspend fun getMovieTorrents(imdbId: String): Result<List<YtsTorrent>> =
+    suspend fun getMovieTorrents(title: String, year: String): Result<List<YtsTorrent>> =
         withContext(Dispatchers.IO) {
-            var lastError = "All mirrors failed"
-            for (mirror in ytsMirrors) {
-                try {
-                    val url = "$mirror/movie_details.json?imdb_id=$imdbId&with_images=false&with_cast=false"
-                    val json = URL(url).readText(connectTimeout = 8000, readTimeout = 8000)
-                    val root = JSONObject(json)
-                    val status = root.optString("status", "")
-                    if (status != "ok") {
-                        lastError = root.optString("status_message", "Unknown error")
-                        continue
-                    }
-                    val movieObj = root.optJSONObject("data")?.optJSONObject("movie")
-                        ?: return@withContext Result.Success(emptyList())
-                    val torrentsArr = movieObj.optJSONArray("torrents")
-                        ?: return@withContext Result.Success(emptyList())
-                    val list = mutableListOf<YtsTorrent>()
-                    for (i in 0 until torrentsArr.length()) {
-                        val t = torrentsArr.getJSONObject(i)
-                        val hash = t.optString("hash", "")
-                        val quality = t.optString("quality", "?")
-                        val type = t.optString("type", "")
-                        val size = t.optString("size", "?")
-                        val seeds = t.optInt("seeds", 0)
-                        val peers = t.optInt("peers", 0)
-                        if (hash.isNotEmpty()) {
-                            val encodedTitle = movieObj.optString("title_long", imdbId)
-                                .replace(" ", "%20")
-                            val magnet = buildMagnet(hash, encodedTitle)
-                            list.add(YtsTorrent(
-                                hash = hash,
-                                quality = quality,
-                                type = type,
-                                size = size,
-                                seeds = seeds,
-                                peers = peers,
-                                magnetUrl = magnet
-                            ))
-                        }
-                    }
-                    return@withContext Result.Success(list)
-                } catch (e: Exception) {
-                    lastError = e.message ?: "Error"
-                    continue
+            try {
+                val query = URLEncoder.encode("$title $year", "UTF-8")
+                val url = "https://apibay.org/q.php?q=$query&cat=201"
+                val json = fetchUrl(url)
+                val arr = JSONArray(json)
+                if (arr.length() == 0) return@withContext Result.Success(emptyList())
+
+                val list = mutableListOf<YtsTorrent>()
+                for (i in 0 until arr.length()) {
+                    val t = arr.getJSONObject(i)
+                    val hash = t.optString("info_hash", "")
+                    val name = t.optString("name", "")
+                    val seeds = t.optInt("seeders", 0)
+                    val peers = t.optInt("leechers", 0)
+                    val size = t.optLong("size", 0)
+                    // Skip dummy "No results" entry that apibay returns
+                    if (hash.isEmpty() || hash == "0000000000000000000000000000000000000000") continue
+                    list.add(
+                        YtsTorrent(
+                            hash = hash,
+                            quality = extractQuality(name),
+                            type = "web",
+                            size = formatSize(size),
+                            seeds = seeds,
+                            peers = peers,
+                            magnetUrl = buildMagnet(hash, name)
+                        )
+                    )
                 }
+
+                // Sort by seeders desc, return top 8
+                val sorted = list.sortedByDescending { it.seeds }.take(8)
+                Result.Success(sorted)
+            } catch (e: Exception) {
+                Result.Error(e.message ?: "Torrent search failed")
             }
-            Result.Error(lastError)
         }
 
     /**
-     * TV torrents from EZTV. imdbId = full "tt1234567" format.
-     * EZTV needs bare numeric id (strip tt prefix).
+     * TV torrents from apibay.org. Searches by title + SxxExx.
      */
-    suspend fun getTvTorrents(imdbId: String): Result<List<EztvTorrent>> =
+    suspend fun getTvTorrents(title: String, season: Int, episode: Int): Result<List<EztvTorrent>> =
         withContext(Dispatchers.IO) {
-            val numericId = imdbId.removePrefix("tt").trimStart('0').ifEmpty { "0" }
-            var lastError = "All mirrors failed"
-            for (mirror in eztvMirrors) {
-                try {
-                    val url = "$mirror/get-torrents?imdb_id=$numericId&limit=100"
-                    val json = URL(url).readText(connectTimeout = 8000, readTimeout = 8000)
-                    val root = JSONObject(json)
-                    val count = root.optInt("torrents_count", 0)
-                    if (count == 0) return@withContext Result.Success(emptyList())
-                    val torrentsArr = root.optJSONArray("torrents")
-                        ?: return@withContext Result.Success(emptyList())
-                    val list = mutableListOf<EztvTorrent>()
-                    for (i in 0 until torrentsArr.length()) {
-                        val t = torrentsArr.getJSONObject(i)
-                        val magnet = t.optString("magnet_url", "")
-                        if (magnet.isEmpty()) continue
-                        list.add(EztvTorrent(
-                            id = t.optInt("id", 0),
-                            hash = t.optString("hash", ""),
-                            filename = t.optString("filename", ""),
-                            title = t.optString("title", ""),
-                            imdbId = t.optString("imdb_id", ""),
-                            seeds = t.optInt("seeds", 0),
-                            peers = t.optInt("peers", 0),
-                            sizeBytes = t.optLong("size_bytes", 0),
-                            magnetUrl = magnet
-                        ))
-                    }
-                    return@withContext Result.Success(list)
-                } catch (e: Exception) {
-                    lastError = e.message ?: "Error"
-                    continue
+            try {
+                val episodeStr = "S%02dE%02d".format(season, episode)
+                val query = URLEncoder.encode("$title $episodeStr", "UTF-8")
+                val url = "https://apibay.org/q.php?q=$query&cat=205"
+                val json = fetchUrl(url)
+                val arr = JSONArray(json)
+                if (arr.length() == 0) return@withContext Result.Success(emptyList())
+
+                val list = mutableListOf<EztvTorrent>()
+                for (i in 0 until arr.length()) {
+                    val t = arr.getJSONObject(i)
+                    val hash = t.optString("info_hash", "")
+                    val name = t.optString("name", "")
+                    val seeds = t.optInt("seeders", 0)
+                    val peers = t.optInt("leechers", 0)
+                    val size = t.optLong("size", 0)
+                    if (hash.isEmpty() || hash == "0000000000000000000000000000000000000000") continue
+                    list.add(
+                        EztvTorrent(
+                            id = i,
+                            hash = hash,
+                            filename = name,
+                            title = name,
+                            imdbId = "",
+                            seeds = seeds,
+                            peers = peers,
+                            sizeBytes = size,
+                            magnetUrl = buildMagnet(hash, name)
+                        )
+                    )
                 }
+
+                val sorted = list.sortedByDescending { it.seeds }.take(8)
+                Result.Success(sorted)
+            } catch (e: Exception) {
+                Result.Error(e.message ?: "Torrent search failed")
             }
-            Result.Error(lastError)
         }
 
-    private fun buildMagnet(hash: String, encodedTitle: String): String {
-        val trackers = listOf(
-            "udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce",
-            "udp%3A%2F%2Fopen.tracker.cl%3A1337%2Fannounce",
-            "udp%3A%2F%2F9.rarbg.to%3A2710%2Fannounce",
-            "udp%3A%2F%2Ftracker.openbittorrent.com%3A80",
-            "udp%3A%2F%2Ftracker.internetwarriors.net%3A1337%2Fannounce"
-        )
-        val trackerString = trackers.joinToString("&") { "tr=$it" }
-        return "magnet:?xt=urn:btih:$hash&dn=$encodedTitle&$trackerString"
+    private fun buildMagnet(hash: String, name: String): String {
+        val encodedName = URLEncoder.encode(name, "UTF-8")
+        val trackerString = trackers.joinToString("&") {
+            "tr=${URLEncoder.encode(it, "UTF-8")}"
+        }
+        return "magnet:?xt=urn:btih:$hash&dn=$encodedName&$trackerString"
     }
 
-    private fun URL.readText(connectTimeout: Int, readTimeout: Int): String {
-        val conn = openConnection() as java.net.HttpURLConnection
-        conn.connectTimeout = connectTimeout
-        conn.readTimeout = readTimeout
+    private fun extractQuality(name: String): String {
+        return when {
+            name.contains("2160p", ignoreCase = true) || name.contains("4K", ignoreCase = true) -> "4K"
+            name.contains("1080p", ignoreCase = true) -> "1080p"
+            name.contains("720p", ignoreCase = true) -> "720p"
+            name.contains("480p", ignoreCase = true) -> "480p"
+            else -> "HD"
+        }
+    }
+
+    private fun formatSize(bytes: Long): String {
+        if (bytes <= 0) return "?"
+        val gb = bytes / (1024.0 * 1024.0 * 1024.0)
+        val mb = bytes / (1024.0 * 1024.0)
+        return if (gb >= 1.0) "%.2f GB".format(gb) else "%.0f MB".format(mb)
+    }
+
+    private fun fetchUrl(urlStr: String): String {
+        val url = java.net.URL(urlStr)
+        val conn = url.openConnection() as java.net.HttpURLConnection
+        conn.connectTimeout = 10000
+        conn.readTimeout = 10000
         conn.setRequestProperty(
             "User-Agent",
             "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36"

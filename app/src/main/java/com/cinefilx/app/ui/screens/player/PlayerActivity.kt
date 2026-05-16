@@ -16,11 +16,13 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -104,16 +106,17 @@ class PlayerActivity : ComponentActivity() {
     }
 }
 
-// ─── Stream server definitions ────────────────────────────────────────────────
+// ─── Stream servers ───────────────────────────────────────────────────────────
 
 data class StreamServer(val name: String, val tag: String)
 
 private val SERVERS = listOf(
-    StreamServer("VidSrc",     "vidsrc"),
-    StreamServer("2Embed",     "2embed"),
-    StreamServer("VidSrc.me",  "vidsrcme"),
-    StreamServer("SuperEmbed", "superembed"),
-    StreamServer("AutoEmbed",  "autoembed")
+    StreamServer("VidSrc",    "vidsrc"),     // vidsrc.to  - huge library
+    StreamServer("VidSrc.me", "vidsrcme"),   // vidsrcme.ru - very reliable
+    StreamServer("2Embed",    "2embed"),     // 2embed.cc
+    StreamServer("VidBinge",  "vidbinge"),   // vidbinge.dev
+    StreamServer("VidSrc.icu","vidsrcicu"),  // vidsrc.icu
+    StreamServer("Videasy",   "videasy")     // player.videasy.net
 )
 
 private fun buildEmbedUrl(
@@ -125,45 +128,54 @@ private fun buildEmbedUrl(
     episode: Int
 ): String {
     val isMovie = mediaType == "movie"
-    // Use imdbId if available, fallback to tmdbId
     val hasImdb = imdbId.startsWith("tt") && imdbId.length > 4
-    return when (server) {
-        "vidsrc" -> if (isMovie) {
-            if (hasImdb) "https://vidsrc.to/embed/movie/$imdbId"
-            else "https://vidsrc.to/embed/movie/$tmdbId"
-        } else {
-            if (hasImdb) "https://vidsrc.to/embed/tv/$imdbId/$season/$episode"
-            else "https://vidsrc.to/embed/tv/$tmdbId/$season/$episode"
-        }
 
+    return when (server) {
+        // vidsrc.to: supports both imdb and tmdb
+        "vidsrc" -> if (isMovie)
+            if (hasImdb) "https://vidsrc.to/embed/movie/$imdbId"
+            else         "https://vidsrc.to/embed/movie/$tmdbId"
+        else
+            if (hasImdb) "https://vidsrc.to/embed/tv/$imdbId/$season/$episode"
+            else         "https://vidsrc.to/embed/tv/$tmdbId/$season/$episode"
+
+        // vidsrc.me (redirects to vidsrcme.ru) - tmdb only
         "vidsrcme" -> if (isMovie)
             "https://vidsrcme.ru/embed/movie?tmdb=$tmdbId"
         else
             "https://vidsrcme.ru/embed/tv?tmdb=$tmdbId&season=$season&episode=$episode"
 
-        "2embed" -> if (isMovie) {
+        // 2embed.cc - supports imdb and tmdb
+        "2embed" -> if (isMovie)
             if (hasImdb) "https://www.2embed.cc/embed/$imdbId"
-            else "https://www.2embed.cc/embed/$tmdbId"
-        } else {
+            else         "https://www.2embed.cc/embed/$tmdbId"
+        else
             if (hasImdb) "https://www.2embed.cc/embedtv/$imdbId&s=$season&e=$episode"
-            else "https://www.2embed.cc/embedtv/$tmdbId&s=$season&e=$episode"
-        }
+            else         "https://www.2embed.cc/embedtv/$tmdbId&s=$season&e=$episode"
 
-        "autoembed" -> if (isMovie)
-            "https://player.autoembed.cc/embed/movie/$tmdbId"
+        // vidbinge.dev - tmdb only
+        "vidbinge" -> if (isMovie)
+            "https://vidbinge.dev/embed/movie/$tmdbId"
         else
-            "https://player.autoembed.cc/embed/tv/$tmdbId/$season/$episode"
+            "https://vidbinge.dev/embed/tv/$tmdbId/$season/$episode"
 
-        "superembed" -> if (isMovie)
-            "https://multiembed.mov/?video_id=$tmdbId&tmdb=1"
+        // vidsrc.icu - tmdb only
+        "vidsrcicu" -> if (isMovie)
+            "https://vidsrc.icu/embed/movie/$tmdbId"
         else
-            "https://multiembed.mov/?video_id=$tmdbId&tmdb=1&s=$season&e=$episode"
+            "https://vidsrc.icu/embed/tv/$tmdbId/$season/$episode"
+
+        // player.videasy.net - tmdb only
+        "videasy" -> if (isMovie)
+            "https://player.videasy.net/movie/$tmdbId"
+        else
+            "https://player.videasy.net/tv/$tmdbId/$season/$episode"
 
         else -> "about:blank"
     }
 }
 
-// ─── Composable player screen ─────────────────────────────────────────────────
+// ─── Player composable ────────────────────────────────────────────────────────
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -180,7 +192,6 @@ fun PlayerScreen(
     var showControls   by remember { mutableStateOf(true) }
     var webViewRef     by remember { mutableStateOf<WebView?>(null) }
     var isLoading      by remember { mutableStateOf(true) }
-    var errorMsg       by remember { mutableStateOf<String?>(null) }
 
     val embedUrl = remember(selectedServer, tmdbId, imdbId, mediaType, season, episode) {
         buildEmbedUrl(
@@ -193,10 +204,8 @@ fun PlayerScreen(
         )
     }
 
-    // Reset loading on URL change
     LaunchedEffect(embedUrl) {
         isLoading = true
-        errorMsg = null
     }
 
     // Auto-hide controls after 4s
@@ -216,65 +225,58 @@ fun PlayerScreen(
                 interactionSource = remember { MutableInteractionSource() }
             ) { showControls = !showControls }
     ) {
-        // ── WebView ─────────────────────────────────────────────────────────
+        // ── WebView ──────────────────────────────────────────────────────────
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { ctx ->
                 WebView(ctx).apply {
                     webViewRef = this
                     settings.apply {
-                        javaScriptEnabled = true
-                        domStorageEnabled = true
-                        mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                        javaScriptEnabled          = true
+                        domStorageEnabled          = true
+                        mixedContentMode           = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
                         mediaPlaybackRequiresUserGesture = false
-                        userAgentString =
-                            "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 " +
-                            "(KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
-                        allowFileAccess = false
+                        userAgentString            =
+                            "Mozilla/5.0 (Linux; Android 13; Pixel 7) " +
+                            "AppleWebKit/537.36 (KHTML, like Gecko) " +
+                            "Chrome/124.0.6367.82 Mobile Safari/537.36"
+                        allowFileAccess            = true
                         setSupportZoom(false)
-                        builtInZoomControls = false
-                        displayZoomControls = false
-                        loadWithOverviewMode = true
-                        useWideViewPort = true
-                        cacheMode = WebSettings.LOAD_NO_CACHE
+                        builtInZoomControls        = false
+                        displayZoomControls        = false
+                        loadWithOverviewMode       = true
+                        useWideViewPort            = true
+                        cacheMode                  = WebSettings.LOAD_DEFAULT
+                        allowContentAccess         = true
+                        databaseEnabled            = true
                     }
                     webChromeClient = object : WebChromeClient() {}
-                    webViewClient = object : WebViewClient() {
+                    webViewClient   = object : WebViewClient() {
                         override fun onPageFinished(view: WebView, url: String) {
                             isLoading = false
                         }
-                        override fun onReceivedError(
+                        // Never override URL loading — let WebView handle all redirects
+                        override fun shouldOverrideUrlLoading(
                             view: WebView,
-                            errorCode: Int,
-                            description: String,
-                            failingUrl: String
-                        ) {
-                            isLoading = false
-                            // Only show error for the main frame
-                            if (failingUrl == embedUrl) {
-                                errorMsg = "Server unreachable. Try another server."
-                            }
-                        }
-                        @Deprecated("Deprecated in API 24")
-                        override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean {
-                            // Allow all navigation inside WebView
-                            return false
-                        }
+                            request: android.webkit.WebResourceRequest
+                        ): Boolean = false
                     }
                     loadUrl(embedUrl)
                 }
             },
             update = { wv ->
-                val currentUrl = wv.url ?: ""
-                if (currentUrl != embedUrl && !currentUrl.contains(embedUrl.take(30))) {
+                val cur = wv.url ?: ""
+                // Only reload if the server changed significantly
+                if (!cur.contains(SERVERS[selectedServer].tag.take(6)) &&
+                    !cur.startsWith(embedUrl.take(25))
+                ) {
                     isLoading = true
-                    errorMsg = null
                     wv.loadUrl(embedUrl)
                 }
             }
         )
 
-        // Loading spinner
+        // Loading indicator
         if (isLoading) {
             CircularProgressIndicator(
                 modifier = Modifier.align(Alignment.Center),
@@ -283,64 +285,51 @@ fun PlayerScreen(
             )
         }
 
-        // Error message
-        if (errorMsg != null && !isLoading) {
-            Column(
-                modifier = Modifier.align(Alignment.Center),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(errorMsg!!, color = Color.White, fontSize = 14.sp)
-                Spacer(Modifier.height(12.dp))
-                Button(
-                    onClick = {
-                        errorMsg = null
-                        isLoading = true
-                        webViewRef?.loadUrl(embedUrl)
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE50914))
-                ) { Text("Retry") }
-            }
-        }
-
-        // ── Top controls overlay ─────────────────────────────────────────────
+        // ── Controls overlay ─────────────────────────────────────────────────
         if (showControls) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .align(Alignment.TopCenter)
-                    .background(Color.Black.copy(alpha = 0.70f))
+                    .background(Color.Black.copy(alpha = 0.75f))
             ) {
-                // Title row
+                // Title + back + reload
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .statusBarsPadding()
                         .padding(horizontal = 4.dp, vertical = 2.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = Color.White
+                        )
                     }
                     Text(
                         text = if (mediaType == "movie") title
-                               else "$title  S${season}E${episode}",
+                               else "$title · S${season}E${episode}",
                         color = Color.White,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1
                     )
                     IconButton(onClick = {
                         isLoading = true
-                        errorMsg = null
                         webViewRef?.reload()
                     }) {
                         Icon(Icons.Default.Refresh, contentDescription = "Reload", tint = Color.White)
                     }
                 }
 
-                // Server tabs
+                // Server tabs — horizontal scroll so all fit
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
                         .padding(horizontal = 8.dp, vertical = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
@@ -351,12 +340,21 @@ fun PlayerScreen(
                                 if (selectedServer != index) {
                                     selectedServer = index
                                     isLoading = true
-                                    errorMsg = null
+                                    // Force load new URL
+                                    val newUrl = buildEmbedUrl(
+                                        server    = SERVERS[index].tag,
+                                        tmdbId    = tmdbId,
+                                        imdbId    = imdbId,
+                                        mediaType = mediaType,
+                                        season    = season,
+                                        episode   = episode
+                                    )
+                                    webViewRef?.loadUrl(newUrl)
                                 }
                             },
                             shape = RoundedCornerShape(20.dp),
                             color = if (selected) Color(0xFFE50914)
-                                    else Color.White.copy(alpha = 0.18f)
+                                    else Color.White.copy(alpha = 0.20f)
                         ) {
                             Text(
                                 text = server.name,
@@ -369,7 +367,6 @@ fun PlayerScreen(
                         }
                     }
                 }
-
                 Spacer(Modifier.height(4.dp))
             }
         }
