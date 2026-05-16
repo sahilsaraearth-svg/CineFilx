@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -150,11 +152,21 @@ private fun launchPlayer(
 }
 
 private fun openMagnet(context: Context, magnet: String) {
-    runCatching {
-        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(magnet)))
-    }.onFailure {
-        Toast.makeText(context, "No torrent app found. Magnet copied.", Toast.LENGTH_SHORT).show()
+    try {
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(magnet)).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        val chooser = Intent.createChooser(intent, "Open with torrent app")
+        chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(chooser)
+    } catch (e: Exception) {
+        // No torrent app installed — copy magnet to clipboard
         copyToClipboard(context, magnet)
+        Toast.makeText(
+            context,
+            "No torrent app found. Magnet link copied — paste in LibreTorrent/1DM.",
+            Toast.LENGTH_LONG
+        ).show()
     }
 }
 
@@ -488,50 +500,83 @@ private fun TorrentSheet(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(16.dp)
+            .fillMaxHeight(0.85f)
+            .padding(horizontal = 16.dp)
             .navigationBarsPadding()
     ) {
-        Text("Torrents", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(12.dp))
+        Text(
+            "Torrents",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(top = 8.dp, bottom = 12.dp)
+        )
 
         when {
-            isLoading -> Box(Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
+            isLoading -> Box(
+                Modifier.fillMaxWidth().height(120.dp),
+                contentAlignment = Alignment.Center
+            ) { CircularProgressIndicator() }
+
+            error != null -> Column(Modifier.fillMaxWidth().padding(vertical = 16.dp)) {
+                Text(
+                    "Could not load torrents:\n$error",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Tip: Install LibreTorrent, 1DM, or BitTorrent app to open magnet links.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelSmall
+                )
             }
-            error != null -> Text("Failed to load torrents: $error", color = MaterialTheme.colorScheme.error)
+
             mediaType == MediaType.MOVIE -> {
                 if (movieTorrents.isEmpty()) {
-                    Text("No torrents found", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        "No torrents found for this movie.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 16.dp)
+                    )
                 } else {
-                    movieTorrents.forEach { t ->
-                        TorrentRow(
-                            title    = "${t.quality} ${t.type}",
-                            info     = "${t.size} • ${t.seeds} seeds",
-                            magnet   = t.magnetUrl,
-                            onMagnet = onMagnetClick,
-                            onCopy   = onCopyClick
-                        )
+                    LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                        items(movieTorrents) { t ->
+                            TorrentRow(
+                                title    = "${t.quality} • ${t.type.ifEmpty { "web" }}",
+                                info     = "${t.size} • ${t.seeds} seeds",
+                                magnet   = t.magnetUrl,
+                                onMagnet = onMagnetClick,
+                                onCopy   = onCopyClick
+                            )
+                        }
+                        item { Spacer(Modifier.height(16.dp)) }
                     }
                 }
             }
+
             else -> {
-                val shown = tvTorrents.take(30)
-                if (shown.isEmpty()) {
-                    Text("No torrents found", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (tvTorrents.isEmpty()) {
+                    Text(
+                        "No torrents found for this show.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 16.dp)
+                    )
                 } else {
-                    shown.forEach { t ->
-                        TorrentRow(
-                            title    = t.title.take(60),
-                            info     = "${t.displaySize} • ${t.seeds} seeds",
-                            magnet   = t.magnetUrl,
-                            onMagnet = onMagnetClick,
-                            onCopy   = onCopyClick
-                        )
+                    LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                        items(tvTorrents.take(50)) { t ->
+                            TorrentRow(
+                                title    = t.title.let { if (it.length > 70) it.take(67) + "…" else it },
+                                info     = "${t.displaySize} • ${t.seeds} seeds",
+                                magnet   = t.magnetUrl,
+                                onMagnet = onMagnetClick,
+                                onCopy   = onCopyClick
+                            )
+                        }
+                        item { Spacer(Modifier.height(16.dp)) }
                     }
                 }
             }
         }
-        Spacer(Modifier.height(16.dp))
     }
 }
 

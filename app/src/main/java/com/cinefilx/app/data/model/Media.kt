@@ -225,18 +225,14 @@ data class YtsMovie(
 )
 
 data class YtsTorrent(
-    @SerializedName("url") val url: String,
-    @SerializedName("hash") val hash: String,
-    @SerializedName("quality") val quality: String,
-    @SerializedName("type") val type: String,
-    @SerializedName("seeds") val seeds: Int,
-    @SerializedName("peers") val peers: Int,
-    @SerializedName("size") val size: String
-) {
-    val magnetUrl: String get() =
-        "magnet:?xt=urn:btih:$hash&dn=${title}&tr=udp://tracker.opentrackr.org:1337/announce&tr=udp://open.stealth.si:80/announce"
-    private val title: String get() = ""
-}
+    val hash: String,
+    val quality: String,
+    val type: String,
+    val size: String,
+    val seeds: Int,
+    val peers: Int,
+    val magnetUrl: String
+)
 
 data class EztvResponse(
     @SerializedName("imdb_id") val imdbId: String,
@@ -245,17 +241,15 @@ data class EztvResponse(
 )
 
 data class EztvTorrent(
-    @SerializedName("id") val id: Int,
-    @SerializedName("hash") val hash: String,
-    @SerializedName("filename") val filename: String,
-    @SerializedName("magnet_url") val magnetUrl: String,
-    @SerializedName("title") val title: String,
-    @SerializedName("imdb_id") val imdbId: String,
-    @SerializedName("season") val season: String = "",
-    @SerializedName("episode") val episode: String = "",
-    @SerializedName("seeds") val seeds: Int = 0,
-    @SerializedName("peers") val peers: Int = 0,
-    @SerializedName("size_bytes") val sizeBytes: Long = 0L
+    val id: Int,
+    val hash: String,
+    val filename: String,
+    val magnetUrl: String,
+    val title: String,
+    val imdbId: String,
+    val seeds: Int = 0,
+    val peers: Int = 0,
+    val sizeBytes: Long = 0L
 ) {
     val displaySize: String get() {
         val mb = sizeBytes / 1024 / 1024
